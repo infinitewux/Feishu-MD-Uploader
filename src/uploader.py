@@ -5,6 +5,7 @@ from pathlib import Path
 import requests
 import tempfile
 import logging
+from urllib.parse import unquote
 
 # Add src to path so we can import modules if running directly
 sys.path.append(str(Path(__file__).parent.parent))
@@ -168,6 +169,7 @@ def main():
                             continue
                     else:
                         # Resolve relative path to absolute
+                        image_path = unquote(image_path)
                         if not os.path.isabs(image_path):
                             image_path = os.path.join(markdown_dir, image_path)
                     
