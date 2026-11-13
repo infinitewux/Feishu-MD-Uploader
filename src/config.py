@@ -7,6 +7,7 @@ load_dotenv()
 class Config:
     APP_ID = os.getenv("APP_ID")
     APP_SECRET = os.getenv("APP_SECRET")
+    SHARE_EMAIL = os.getenv("FEISHU_SHARE_EMAIL", "").strip()
     # Default to generic feishu.cn, but allow override for tenant-specific domains
     FEISHU_DOC_HOST = os.getenv("FEISHU_DOC_HOST", "https://www.feishu.cn")
 

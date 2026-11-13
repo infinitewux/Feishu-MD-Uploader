@@ -11,7 +11,7 @@ from urllib.parse import unquote
 sys.path.append(str(Path(__file__).parent.parent))
 
 from src.config import Config
-from src.document import create_document, set_public_permission, add_blocks
+from src.document import create_document, set_public_permission, add_blocks, add_editor
 from src.markdown_parser import MarkdownParser
 from src.image_uploader import ImageUploader
 from src.auth import get_client
@@ -78,6 +78,11 @@ def main():
         if args.debug:
             print(f"✅ Document created. Token: {doc_token}")
         print(f"🔗 URL: {Config.FEISHU_DOC_HOST}/docx/{doc_token}")
+        if Config.SHARE_EMAIL:
+            add_editor(doc_token, Config.SHARE_EMAIL)
+            print(f"✅ Shared with {Config.SHARE_EMAIL} as editor.")
+        else:
+            print("⚠️ 未配置 FEISHU_SHARE_EMAIL，文档不会单独分享给个人。")
 
         # 2. Parse Markdown (with ImageUploader)
         if args.debug:
@@ -91,7 +96,7 @@ def main():
         # 3. Add Content
         if blocks:
             chunk_size = 50
-            block_id_map = []  # Map block index to block_id
+            block_id_map = {}  # Map parsed blocks, including table cells, to created IDs
             total_chunks = (len(blocks) + chunk_size - 1) // chunk_size
             
             # Use tqdm for progress bar if available and not in debug mode
@@ -105,10 +110,7 @@ def main():
             
             for i in range(0, len(blocks), chunk_size):
                 chunk = blocks[i:i + chunk_size]
-                response_children = add_blocks(doc_token, chunk)
-                # Store block_ids for later image upload
-                for child in response_children:
-                    block_id_map.append(child.block_id)
+                add_blocks(doc_token, chunk, block_id_map=block_id_map)
                 
                 if pbar:
                     pbar.update(1)
@@ -137,7 +139,7 @@ def main():
                         print(f"Uploading {len(pending_images)} images...")
 
                 for img_info in pending_images:
-                    block_index = img_info['block_index']
+                    block_id = block_id_map.get(id(img_info['block']))
                     image_path = img_info['image_path']
                     temp_file_path = None
 
@@ -173,8 +175,7 @@ def main():
                         if not os.path.isabs(image_path):
                             image_path = os.path.join(markdown_dir, image_path)
                     
-                    if block_index < len(block_id_map):
-                        block_id = block_id_map[block_index]
+                    if block_id:
                         if args.debug:
                             print(f"   - Uploading image: {os.path.basename(image_path)} to block")
                         success = image_uploader.upload_and_update_image(image_path, doc_token, block_id)

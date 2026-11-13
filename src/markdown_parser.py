@@ -31,6 +31,7 @@ class MarkdownParser:
         self.document_id = document_id
 
     def parse(self, content: str) -> List[Block]:
+        self._pending_images = []
         tokens = self.md.parse(content)
         blocks = []
         
@@ -109,7 +110,7 @@ class MarkdownParser:
                         if not hasattr(self, '_pending_images'):
                             self._pending_images = []
                         self._pending_images.append({
-                            'block_index': len(blocks) - 1,
+                            'block': block,
                             'image_path': src,
                             'alt': image_token.content if hasattr(image_token, 'content') else ''
                         })
@@ -301,6 +302,7 @@ class MarkdownParser:
         rows = [] # List[List[List[Block]]] (Row -> Col -> Content Blocks)
         current_row = []
         current_cell_blocks = []
+        is_header = False
         
         i = start_index + 1
         while i < len(tokens):
@@ -317,6 +319,7 @@ class MarkdownParser:
                 
             elif token.type in ['th_open', 'td_open']:
                 current_cell_blocks = []
+                is_header = token.type == 'th_open'
                 
             elif token.type in ['th_close', 'td_close']:
                 current_row.append(current_cell_blocks)
@@ -324,12 +327,43 @@ class MarkdownParser:
             elif token.type == 'inline':
                 # Parse inline content as a Text Block for the cell
                 # Note: Cells can theoretically contain other blocks, but MD tables usually just have inline text
-                text_elements = self._parse_inline(token)
-                text_block = Block.builder() \
-                    .block_type(BlockType.TEXT) \
-                    .text(Text.builder().elements(text_elements).build()) \
-                    .build()
-                current_cell_blocks.append(text_block)
+                # Preserve images inside cells as separate blocks, alongside text.
+                from copy import copy
+                inline_children = []
+
+                def append_text():
+                    if not inline_children:
+                        return
+                    text_token = copy(token)
+                    text_token.children = inline_children[:]
+                    text_elements = self._parse_inline(text_token)
+                    if not text_elements:
+                        return
+                    if is_header:
+                        for element in text_elements:
+                            if element.text_run:
+                                if not element.text_run.text_element_style:
+                                    element.text_run.text_element_style = TextElementStyle.builder().build()
+                                element.text_run.text_element_style.bold = True
+                    current_cell_blocks.append(Block.builder()
+                        .block_type(BlockType.TEXT)
+                        .text(Text.builder().elements(text_elements).build())
+                        .build())
+
+                for child in token.children or []:
+                    if child.type == 'image' and self.image_uploader and self.document_id:
+                        append_text()
+                        inline_children.clear()
+                        image_block = Block.builder().block_type(BlockType.IMAGE).image(Image.builder().build()).build()
+                        current_cell_blocks.append(image_block)
+                        self._pending_images.append({
+                            'block': image_block,
+                            'image_path': child.attrs.get('src', ''),
+                            'alt': child.content,
+                        })
+                    else:
+                        inline_children.append(child)
+                append_text()
                 
             i += 1
             
@@ -355,6 +389,8 @@ class MarkdownParser:
                 .property(TableProperty.builder()
                     .row_size(row_size)
                     .column_size(col_size)
+                    .column_width([max(100, 500 // col_size)] * col_size if col_size else [])
+                    .header_row(True)
                     .build())
                 .build()) \
             .children(cell_blocks) \

@@ -110,6 +110,9 @@ cp .env.example .env
 APP_ID="cli_xxxxxxxxxxxxxx"
 APP_SECRET="XXXXXXXXXXXXXXXXXXXXXXXXXXX"
 
+# 上传后自动将文档分享给此飞书账号（编辑权限）
+FEISHU_SHARE_EMAIL="your-account@example.com"
+
 # 可选：飞书文档域名（默认为 www.feishu.cn）
 FEISHU_DOC_HOST="www.feishu.cn"
 
@@ -121,7 +124,7 @@ FOLDER_TOKEN=""
 
 ### Windows 双击上传
 
-完成依赖安装并配置 `.env` 后，双击项目目录中的 `upload.bat`，在弹窗中选择 Markdown 文件。上传过程和文档链接会显示在命令窗口中，结束后按任意键关闭窗口。取消选文件不会上传。
+完成依赖安装并配置 `.env` 后，在 `.env` 中填写 `FEISHU_SHARE_EMAIL`，然后双击项目目录中的 `upload.bat`，在弹窗中选择 Markdown 文件。上传过程和文档链接会显示在命令窗口中，结束后按任意键关闭窗口。取消选文件不会上传。
 
 ### 1. 准备 Markdown 文件
 
@@ -297,6 +300,7 @@ Setting permissions...
 - 引用块：`> quote`
 - 分割线：`---` 或 `***`
 - 表格：完整的 Markdown 表格语法
+- 表格首行会作为表头并加粗，默认按列数分配宽度。
 
 #### 媒体与链接
 - 本地图片：`![alt](./path/to/image.png)`
@@ -309,6 +313,8 @@ Setting permissions...
 - 对齐：`<center>`, `<div align="center/left/right">`
 
 ### ⚠️ 已知限制
+
+Markdown 表格不包含原表格的列宽、背景和文字颜色。如果飞书导出的 Markdown 没有保留这些样式，重新导入时只能使用默认列宽和表头样式，无法自动找回原始格式。当前未还原合并单元格或文字颜色。
 
 1. **图片与文本冲突**：
    - 如果段落中包含图片（如 `Text ![img](url)`），整个段落会被转换为图片块，文本会丢失

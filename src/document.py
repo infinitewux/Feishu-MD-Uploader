@@ -27,13 +27,15 @@ def create_document(title: str, folder_token: str = None) -> str:
 
     return response.data.document.document_id
 
-def add_blocks(document_id: str, blocks: list, parent_id: str = None):
+def add_blocks(document_id: str, blocks: list, parent_id: str = None, block_id_map: dict = None):
     """
     Add blocks to the document or a specific parent block.
     Handles Table blocks by creating them empty first and then populating cells.
     """
     if parent_id is None:
         parent_id = document_id
+    if block_id_map is None:
+        block_id_map = {}
         
     client = get_client()
     
@@ -51,7 +53,10 @@ def add_blocks(document_id: str, blocks: list, parent_id: str = None):
         response = client.docx.v1.document_block_children.create(request)
         if not response.success():
              raise Exception(f"Failed to add blocks: {response.code}, {response.msg}, {response.error}")
-        return response.data.children
+        created = response.data.children
+        for original, result in zip(batch, created):
+            block_id_map[id(original)] = result.block_id
+        return created
 
     all_created_children = []
     current_batch = []
@@ -99,11 +104,11 @@ def add_blocks(document_id: str, blocks: list, parent_id: str = None):
                         # We want its children (the content)
                         cell_content = original_children[i].children
                         if cell_content:
-                            add_blocks(document_id, cell_content, parent_id=cell_id)
+                            add_blocks(document_id, cell_content, parent_id=cell_id, block_id_map=block_id_map)
             
             elif original_children: # General Nested Block (e.g. List)
                 # Recursively add children to this block
-                add_blocks(document_id, original_children, parent_id=created_block.block_id)
+                add_blocks(document_id, original_children, parent_id=created_block.block_id, block_id_map=block_id_map)
                 
         else:
             # No children, just add to batch
@@ -114,6 +119,24 @@ def add_blocks(document_id: str, blocks: list, parent_id: str = None):
         all_created_children.extend(flush_batch(current_batch))
         
     return all_created_children
+
+def add_editor(token: str, email: str):
+    """Grant a specific Feishu user edit access without sending a notification."""
+    client = get_client()
+    request = (CreatePermissionMemberRequest.builder()
+        .token(token)
+        .type("docx")
+        .need_notification(False)
+        .request_body(BaseMember.builder()
+            .member_type("email")
+            .member_id(email)
+            .perm("edit")
+            .build())
+        .build())
+    response = client.drive.v1.permission_member.create(request)
+    if not response.success():
+        raise Exception(f"Failed to share document: {response.code}, {response.msg}, {response.error}")
+
 
 def set_public_permission(token: str):
     """
